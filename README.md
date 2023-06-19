@@ -1,4 +1,9 @@
-# Cauchy: A Distributed Key-Value Store
+
+&nbsp;
+<div align="center">
+    <img alt="Cauchy Logo" src="./assets/cauchy-logo.png" alt="Logo" width="250">
+</div>
+&nbsp;
 
 <div align="center">
 
