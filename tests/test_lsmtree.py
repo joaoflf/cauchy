@@ -1,17 +1,16 @@
-import os
+import shutil
 
 import pytest
-from LSMTree import LSMTree
+from lsmtree import LSMTree
 
 
 @pytest.fixture
 def tree():
     # Setup
+    if shutil.os.path.exists("storage"):
+        shutil.rmtree("storage")
     tree = LSMTree()
     yield tree
-    # Teardown
-    if os.path.exists("storage"):
-        os.rmdir("storage")
 
 
 def test_put_and_get(tree):
@@ -36,7 +35,7 @@ def test_find_block_range_for_key(tree):
 
 
 def test_find_key_in_segment(tree):
-    tree._memtable = {"a": 1, "b": 2, "c": 3}
+    tree._memtable = {"a": "1", "b": "2", "c": "3"}
     tree._flush_memtable()
-    assert tree._find_key_in_segment("b", tree.data_segments[0]) == 2
+    assert tree._find_key_in_segment("b", tree.data_segments[0]) == "2"
     assert tree._find_key_in_segment("z", tree.data_segments[0]) is None

@@ -52,6 +52,7 @@ class LSMTree:
         Flushes the memtable to disk and creates a new memtable.
         Stores in a new SSTable the data that was in the memtable,
         respecting the block size and keeps a sparse index of block offset and first key in block.
+        TODO: SUPPORT STRING AND NUMBERS
         """
         data_segment_name = f"storage/segment_{self.last_sstable_id}"
         current_block_size = 0
