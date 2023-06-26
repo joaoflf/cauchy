@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "cauchy"
+version = "0.1.0"
+authors = [{ name = "João Fernandes", email = "fernandesj@proton.me" }]
+description = "Cauchy is a scalable, lightweight, and robust distributed key-value store"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = ["sortedcontainers>=2.4.0"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/joaoflf/cauchy"
+"Bug Tracker" = "https://github.com/joaoflf/galois/cauchy"
+
+
+[project.optional-dependencies]
+test = ["pytest"]
+lint = ["black"]

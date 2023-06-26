@@ -21,14 +21,14 @@ Cauchy is a scalable, lightweight, and robust distributed key-value store (DKVS)
 
 ## 📋 Overview
 
-Cauchy aims to be an educational implementation of a distributed key-value store, complete with an LSMTree (Log-Structured Merge Tree) storage engine. The project is mean to learn distributed data systems, data-intensive application design, and storage engines, providing an accessible codebase to learn from and experiment with.
+Cauchy aims to be an educational implementation of a distributed key-value store, complete with an LSMTree (Log-Structured Merge Tree) storage engine. The project is meant to learn about distributed data systems, data-intensive application design, and storage engines, providing an accessible codebase to learn from and experiment with.
 
 &nbsp;
 
 ## 🎯 Features
 
 * **Distributed:** Scales across multiple nodes.
-* **LSMTree Storage Engine:** Leverages the LSMT storage engine for efficient data management.
+* **LSMTree Storage Engine:** Leverages an LSMTree as storage engine for efficient data management.
 * **Consistent Hashing:** Utilizes consistent hashing for data distribution.
 * **Fault Tolerance:** Built-in resilience against node failures.
 * **REST API Interface:** Provides a REST API for interacting with the store.
