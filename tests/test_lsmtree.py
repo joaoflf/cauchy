@@ -1,6 +1,7 @@
 import shutil
 
 import pytest
+
 from lsmtree import LSMTree
 
 
@@ -20,18 +21,26 @@ def test_put_and_get(tree):
 
 
 def test_memtable_overflow(tree):
-    large_value = "x" * (tree._memtable_max_size + 1)
+    large_value = "x" * (tree._memtable_max_size // 2)
+    large_value2 = "y" * (tree._memtable_max_size // 2 + 2)
     tree.put("test_key", large_value)
+    tree.put("test_key2", large_value2)
     assert tree.get("test_key") == large_value
     assert (
         tree._memtable.get("test_key") is None
     )  # The data should have been flushed to disk
 
 
+def test_read_from_disk(tree):
+    tree.put("test_key", "test_value")
+    tree._flush_memtable()
+    assert tree.get("test_key") == "test_value"
+
+
 def test_find_block_range_for_key(tree):
-    mock_block_offsets = {"a": 0, "b": 2, "c": 3}
+    mock_block_offsets = {"a": 0, "c": 3, "d": 5}
     assert tree._find_block_range_for_key("b", mock_block_offsets) == ("a", "c")
-    assert tree._find_block_range_for_key("z", mock_block_offsets) == ("c", None)
+    assert tree._find_block_range_for_key("z", mock_block_offsets) == ("d", None)
 
 
 def test_find_key_in_segment(tree):

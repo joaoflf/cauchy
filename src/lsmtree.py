@@ -5,6 +5,7 @@ import sys
 from typing import BinaryIO, Optional, Tuple
 
 import sortedcontainers
+from pympler import asizeof
 
 
 class LSMTree:
@@ -44,8 +45,7 @@ class LSMTree:
     #        del self._memtable.pop(key)
 
     def _is_memtable_over_threshold(self):
-        return len(self._memtable) >= 3
-        return sys.getsizeof(self._memtable) > self._memtable_max_size
+        return asizeof.asizeof(self._memtable) > self._memtable_max_size
 
     def _flush_memtable(self):
         """
@@ -58,11 +58,8 @@ class LSMTree:
         current_block_size = 0
         is_first_block = True
         offsets = {}
-        test_count = 0
         with open(data_segment_name, "wb") as f:
             for key, value in self._memtable.items():
-                test_count += 1
-
                 # if is_first_block, then we need to add the offset of the first block
                 if is_first_block:
                     offsets[key] = 0
@@ -77,11 +74,12 @@ class LSMTree:
                 # and strings with the length of the key and value
                 format_string = ">i{}si{}s".format(key_length, value_length)
 
-                if test_count > 2:
-                    # if (
-                    #    current_block_size + struct.calcsize(format_string)
-                    #    > self._sstable_block_size
-                    # ):
+                if (
+                    current_block_size + struct.calcsize(format_string)
+                    > self._sstable_block_size
+                ):
+                    # if the current block size + the size of the new key value pair is greater than the block size,
+                    # then we need to start a new block
                     current_block_size = 0
                     f.flush()
                     offsets[key] = f.tell()
@@ -103,18 +101,24 @@ class LSMTree:
 
     def _find_block_range_for_key(
         self, key: str, block_offsets: dict
-    ) -> Tuple[int, int]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Returns the offsets of the SSTable blocks that bound the key in the segment.
         """
         block_offset_keys = list(block_offsets.keys())
         position = bisect.bisect_left(block_offset_keys, key)
-        lower_bound = block_offset_keys[position - 1]
-        upper_bound = block_offset_keys[position]
-        if position == len(block_offset_keys):
-            upper_bound = None
-        if position == 0:
-            lower_bound = None
+
+        lower_bound = (
+            block_offset_keys[position - 1]
+            if position in range(1, len(block_offset_keys) + 1)
+            else block_offset_keys[position]
+            if position == 0
+            else None
+        )
+        upper_bound = (
+            block_offset_keys[position] if position != len(block_offset_keys) else None
+        )
+
         return lower_bound, upper_bound
 
     def _find_key_in_segment(
@@ -125,12 +129,13 @@ class LSMTree:
         If the key is in the sparse index, then the value is read directly from the block.
         If not, get the block range that bounds the key and read the file between the lower and upper bound offsets and find the key.
         """
-
-        segmant_name, block_offsets = segment
+        segment_name, block_offsets = segment
         if key in block_offsets:
-            # if key is part of sparse index, read value directly from block
-            value = self._read_value_from_segment(segment, block_offsets[key])[1]
-            return value
+            # if key is part of sparse index, navigate to the block offset and read the key and value
+            with open(segment_name, "rb") as f:
+                f.seek(block_offsets[key])
+                value = self._read_key_and_value(f)[1]
+                return value
         else:
             # if key is not part of sparse index, find the block range that bounds the key
             lower_bound, upper_bound = self._find_block_range_for_key(
@@ -141,19 +146,31 @@ class LSMTree:
                 return None
             else:
                 # else read the file bewteen the lower and upper bound offsets and find the key
-                with open(segmant_name, "rb") as f:
+                with open(segment_name, "rb") as f:
                     current_block_offset = block_offsets[lower_bound]
-                    while True:
+                    while not self._is_EOF(f):
                         f.seek(current_block_offset)
-                        current_key, current_value = self._read_kay_and_value(f)
-                        if key == current_key:
-                            return current_value
-                        elif upper_bound < current_key:
-                            return None
 
+                        current_key, current_value = self._read_key_and_value(f)
+
+                        if key == current_key:
+                            # return the value if the key is found
+                            return current_value
+                        elif upper_bound is not None and upper_bound < current_key:
+                            # if we passed the upper bound, then the key does not exist in the segment
+                            return None
                         current_block_offset = f.tell()
 
-    def _read_kay_and_value(self, file: BinaryIO) -> Tuple[str, str]:
+    @staticmethod
+    def _is_EOF(file: BinaryIO) -> bool:
+        next_byte = file.read(1)
+        if next_byte != b"":
+            # if next_byte is not empty, restore the file pointer
+            file.seek(-1, 1)
+        return next_byte == b""
+
+    @staticmethod
+    def _read_key_and_value(file: BinaryIO) -> Tuple[str, str]:
         """
         Reads a key and value from a file.
         The file pointer should be at the start of the key length.
@@ -165,11 +182,3 @@ class LSMTree:
             "utf-8"
         )
         return key, value
-
-
-if __name__ == "__main__":
-    tree = LSMTree()
-    tree.put("key", "value")
-    tree.put("key2", "value2")
-    tree.put("key3", "value33")
-    print(tree.get("key2"))
