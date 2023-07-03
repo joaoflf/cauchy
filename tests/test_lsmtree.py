@@ -44,7 +44,9 @@ def test_find_block_range_for_key(tree):
 
 
 def test_find_key_in_segment(tree):
-    tree._memtable = {"a": "1", "b": "2", "c": "3"}
+    tree._memtable = {"a": "1", "b": 2, "c": 3.2}
     tree._flush_memtable()
-    assert tree._find_key_in_segment("b", tree.data_segments[0]) == "2"
-    assert tree._find_key_in_segment("z", tree.data_segments[0]) is None
+    assert tree._find_item_in_segment("a", tree.data_segments[0]) == "1"
+    assert tree._find_item_in_segment("b", tree.data_segments[0]) == 2
+    assert tree._find_item_in_segment("c", tree.data_segments[0]) == 3.2
+    assert tree._find_item_in_segment("z", tree.data_segments[0]) is None
