@@ -51,10 +51,23 @@ def test_find_block_range_for_key(tree):
 def test_find_key_in_segment(tree):
     tree._memtable = {"a": "1", "b": 2, "c": 3.2}
     tree._flush_memtable()
-    assert tree._find_item_in_segment("a", tree._data_segments[0]) == "1"
-    assert tree._find_item_in_segment("b", tree._data_segments[0]) == 2
-    assert tree._find_item_in_segment("c", tree._data_segments[0]) == 3.2
+    assert tree._find_item_in_segment("a", tree._data_segments[0])[0] == "1"
+    assert tree._find_item_in_segment("b", tree._data_segments[0])[0] == 2
+    assert tree._find_item_in_segment("c", tree._data_segments[0])[0] == 3.2
     assert tree._find_item_in_segment("z", tree._data_segments[0]) is None
+
+
+def test_delete(tree):
+    tree.put("a", "1")
+    tree.put("b", 2)
+    tree.put("c", 3.2)
+    tree.delete("b")
+    assert tree.get("b") is None
+    tree._flush_memtable()
+    assert tree._find_item_in_segment("b", tree._data_segments[0]) is None
+    tree.delete("a")
+    assert tree.get("a") is None
+    assert tree.get("c") == 3.2
 
 
 def test_merge_and_compact(tree):

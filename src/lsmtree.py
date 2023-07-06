@@ -44,6 +44,9 @@ class LSMTree:
         self._merge_scheduler.start()
 
     def get(self, key: str) -> Optional[U]:
+        if self._memtable.get(key) == "tombstone":
+            return None
+
         memtable_result = self._memtable.get(key) or self._memtable_being_flushed.get(
             key
         )
@@ -53,15 +56,29 @@ class LSMTree:
             for segment in reversed(self._data_segments):
                 segment_result = self._find_item_in_segment(key, segment)
                 if segment_result is not None:
-                    return segment_result
+                    return segment_result[0]
 
     def put(self, key: str, value: U):
         self._memtable.update({key: value})
         if self._is_memtable_over_threshold():
             self._flush_memtable()
 
-    # def delete(self, key):
-    #        del self._memtable.pop(key)
+    def delete(self, key):
+        if key in self._memtable:
+            self._memtable.update({key: "tombstone"})
+        else:
+            segment_name = None
+            item_offset = 0
+            for segment in reversed(self._data_segments):
+                segment_result = self._find_item_in_segment(key, segment)
+                if segment_result is not None:
+                    segment_name = segment[0]
+                    item_offset = segment_result[1]
+                    break
+            if segment_name:
+                self._mark_item_as_tombstoned(segment_name, item_offset)
+            else:
+                raise KeyError(f"Key {key} not found")
 
     def _is_memtable_over_threshold(self):
         return asizeof.asizeof(self._memtable) > self._memtable_max_size
@@ -95,59 +112,60 @@ class LSMTree:
         offsets = {}
         with open(data_segment_name, "wb") as f:
             for key, value in dict_to_write.items():
-                # if is_first_block, then we need to add the offset of the first block
-                if is_first_block:
-                    offsets[key] = 0
-                    is_first_block = False
+                if value != "tombstone":
+                    if is_first_block:
+                        # if is_first_block, then we need to add the offset of the first block
+                        offsets[key] = 0
+                        is_first_block = False
 
-                format_string = self._generate_struct_format_string(str(key), value)
+                    format_string = self._generate_struct_format_string(str(key), value)
 
-                if (
-                    current_block_size + struct.calcsize(format_string)
-                    > self._sstable_block_size
-                ):
-                    # if the current block size + the size of the new key value pair is greater than the block size,
-                    # then we need to start a new block
-                    f.flush()
-                    offsets[key] = f.tell()
-                    current_block_size = struct.calcsize(format_string)
-                else:
-                    current_block_size += struct.calcsize(format_string)
+                    if (
+                        current_block_size + struct.calcsize(format_string)
+                        > self._sstable_block_size
+                    ):
+                        # if the current block size + the size of the new key value pair is greater than the block size,
+                        # then we need to start a new block
+                        f.flush()
+                        offsets[key] = f.tell()
+                        current_block_size = struct.calcsize(format_string)
+                    else:
+                        current_block_size += struct.calcsize(format_string)
 
-                encoded_key = str(key).encode("utf-8")
-                key_length = len(encoded_key)
-                type_char = (
-                    "i"
-                    if isinstance(value, int)
-                    else "d"
-                    if isinstance(value, float)
-                    else "s"
-                )
-                if isinstance(value, int) or isinstance(value, float):
-                    f.write(
-                        struct.pack(
-                            format_string,
-                            key_length,
-                            encoded_key,
-                            False,
-                            type_char.encode("utf-8"),
-                            value,
-                        )
+                    encoded_key = str(key).encode("utf-8")
+                    key_length = len(encoded_key)
+                    type_char = (
+                        "i"
+                        if isinstance(value, int)
+                        else "d"
+                        if isinstance(value, float)
+                        else "s"
                     )
-                else:
-                    encoded_value = str(value).encode("utf-8")
-                    value_length = len(encoded_value)
-                    f.write(
-                        struct.pack(
-                            format_string,
-                            key_length,
-                            encoded_key,
-                            False,
-                            type_char.encode("utf-8"),
-                            value_length,
-                            encoded_value,
+                    if isinstance(value, int) or isinstance(value, float):
+                        f.write(
+                            struct.pack(
+                                format_string,
+                                key_length,
+                                encoded_key,
+                                False,
+                                type_char.encode("utf-8"),
+                                value,
+                            )
                         )
-                    )
+                    else:
+                        encoded_value = str(value).encode("utf-8")
+                        value_length = len(encoded_value)
+                        f.write(
+                            struct.pack(
+                                format_string,
+                                key_length,
+                                encoded_key,
+                                False,
+                                type_char.encode("utf-8"),
+                                value_length,
+                                encoded_value,
+                            )
+                        )
         return offsets
 
     def _generate_struct_format_string(self, key: str, value: U) -> str:
@@ -189,11 +207,14 @@ class LSMTree:
 
         return lower_bound, upper_bound
 
-    def _find_item_in_segment(self, key: str, segment: Tuple[str, dict]) -> Optional[U]:
+    def _find_item_in_segment(
+        self, key: str, segment: Tuple[str, dict]
+    ) -> Optional[Tuple[U, int]]:
         """
         Finds an item in the given segment. If the key is not found, returns None.
         If the key is in the sparse index and not tombstoned, then the value is read directly from the block.
         If not, get the block range that bounds the key and read the file between the lower and upper bound offsets and find the key.
+        Return value and offset of the item in the segment.
         """
         segment_name, block_offsets = segment
         if key in block_offsets:
@@ -202,7 +223,7 @@ class LSMTree:
                 f.seek(block_offsets[key])
                 key_read, value, is_tombstoned = self._read_item_from_disk(f)
                 if not is_tombstoned:
-                    return value
+                    return (value, block_offsets[key])
 
         lower_bound, upper_bound = self._find_block_range_for_key(key, block_offsets)
         if lower_bound is None:
@@ -221,7 +242,7 @@ class LSMTree:
                     ) = self._read_item_from_disk(f)
 
                     if key == current_key and not is_tombstoned:
-                        return current_value
+                        return (current_value, current_block_offset)
                     elif upper_bound is not None and upper_bound < current_key:
                         # if we passed the upper bound, then the key does not exist in the segment
                         return None
@@ -259,6 +280,15 @@ class LSMTree:
 
         return str(key), value, bool(is_tombstoned)
 
+    def _mark_item_as_tombstoned(self, segment_name: str, offset: int):
+        """
+        Marks the item at the given offset in the segment as tombstoned.
+        """
+        with open(segment_name, "r+b") as f:
+            key_length = struct.unpack(">i", f.read(4))[0]
+            f.seek(offset + 4 + key_length)
+            f.write(struct.pack(">?", True))
+
     def _merge_and_compact(self):
         """
         Merges all data segments into a single segment and deletes the old segments.
@@ -290,3 +320,13 @@ class LSMTree:
     def _stop_merge_scheduler(self):
         self._merge_scheduler.cancel()
         self._merge_scheduler = None
+
+
+if __name__ == "__main__":
+    tree = LSMTree()
+    tree.put("a", "a")
+    tree.delete("a")
+    tree.put("b", "b")
+    tree._flush_memtable()
+    tree.delete("b")
+    tree.put("c", "c")
