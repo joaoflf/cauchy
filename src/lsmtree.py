@@ -1,13 +1,12 @@
 import bisect
 import os
 import struct
-import sys
-from typing import BinaryIO, Optional, Tuple, TypeVar
+from typing import BinaryIO, Optional, Tuple, Union
 
 import sortedcontainers
 from pympler import asizeof
 
-T = TypeVar("T", int, float, str)
+U = Union[int, float, str]
 
 
 class LSMTree:
@@ -20,20 +19,21 @@ class LSMTree:
     """
 
     def __init__(self, memtable_max_size: int = 64, sstable_block_size: int = 4):
-        self._memtable = sortedcontainers.SortedDict()
+        self._memtable: dict[str, U] = sortedcontainers.SortedDict()
         self._memtable_max_size = memtable_max_size * 1024 * 1024
         self._sstable_block_size = sstable_block_size * 1024
         self.data_segments = []
         self.last_sstable_id = 0
+        self.last_merged_sstable_id = 0
         if not os.path.exists("storage"):
             os.mkdir("storage")
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> Optional[U]:
         memtable_result = self._memtable.get(key)
         if memtable_result is not None:
             return memtable_result
         else:
-            for segment in self.data_segments:
+            for segment in reversed(self.data_segments):
                 segment_result = self._find_item_in_segment(key, segment)
                 if segment_result is not None:
                     return segment_result
@@ -52,26 +52,36 @@ class LSMTree:
     def _flush_memtable(self):
         """
         Flushes the memtable to disk and creates a new memtable.
-        Stores in a new SSTable the data that was in the memtable,
-        respecting the block size and keeps a sparse index of block offset and first key in block.
         """
 
         # provide new memtable to receive new writes
         memtable_to_flush = self._memtable
         self._memtable = sortedcontainers.SortedDict()
 
+        self.last_sstable_id += 1
         data_segment_name = f"storage/segment_{self.last_sstable_id}"
+
+        offsets = self._write_dict_to_data_segment(data_segment_name, memtable_to_flush)
+        self.data_segments.append((data_segment_name, offsets))
+        memtable_to_flush.clear()
+
+    def _write_dict_to_data_segment(
+        self, data_segment_name: str, dict_to_write: dict
+    ) -> dict:
+        """
+        Writes a dictionary to a data segment and returns the a sparse index of the keys in the segment.
+        """
         current_block_size = 0
         is_first_block = True
         offsets = {}
         with open(data_segment_name, "wb") as f:
-            for key, value in memtable_to_flush.items():
+            for key, value in dict_to_write.items():
                 # if is_first_block, then we need to add the offset of the first block
                 if is_first_block:
                     offsets[key] = 0
                     is_first_block = False
 
-                format_string = self._generate_struct_format_string(key, value)
+                format_string = self._generate_struct_format_string(str(key), value)
 
                 if (
                     current_block_size + struct.calcsize(format_string)
@@ -79,9 +89,9 @@ class LSMTree:
                 ):
                     # if the current block size + the size of the new key value pair is greater than the block size,
                     # then we need to start a new block
-                    current_block_size = 0
                     f.flush()
                     offsets[key] = f.tell()
+                    current_block_size = struct.calcsize(format_string)
                 else:
                     current_block_size += struct.calcsize(format_string)
 
@@ -106,7 +116,7 @@ class LSMTree:
                         )
                     )
                 else:
-                    encoded_value = value.encode("utf-8")
+                    encoded_value = str(value).encode("utf-8")
                     value_length = len(encoded_value)
                     f.write(
                         struct.pack(
@@ -119,11 +129,9 @@ class LSMTree:
                             encoded_value,
                         )
                     )
+        return offsets
 
-        self.data_segments.append((data_segment_name, offsets))
-        memtable_to_flush.clear()
-
-    def _generate_struct_format_string(self, key: str, value: T) -> str:
+    def _generate_struct_format_string(self, key: str, value: U) -> str:
         """
         Builds the format string for the serialization of the key and value.
         Order is key_length, key, tombstone, value_type, value_length(if str), value.
@@ -162,9 +170,7 @@ class LSMTree:
 
         return lower_bound, upper_bound
 
-    def _find_item_in_segment(
-        self, key: str, segment: Tuple[str, dict]
-    ) -> Optional[str]:
+    def _find_item_in_segment(self, key: str, segment: Tuple[str, dict]) -> Optional[U]:
         """
         Finds an item in the given segment. If the key is not found, returns None.
         If the key is in the sparse index and not tombstoned, then the value is read directly from the block.
@@ -209,7 +215,7 @@ class LSMTree:
             file.seek(-1, 1)
         return next_byte == b""
 
-    def _read_item_from_disk(self, file: BinaryIO) -> Tuple[str, T, bool]:
+    def _read_item_from_disk(self, file: BinaryIO) -> Tuple[str, U, bool]:
         """
         Reads a key, value, and tombstone bit from the file.
         File pointer must be at the start of the key.
@@ -220,12 +226,43 @@ class LSMTree:
         value_type = struct.unpack(">c", file.read(1))[0].decode("utf-8")
         if value_type == "s":
             value_length = struct.unpack(">i", file.read(4))[0]
-            value = struct.unpack(f">{value_length}s", file.read(value_length))[
-                0
-            ].decode("utf-8")
+            value = str(
+                struct.unpack(f">{value_length}s", file.read(value_length))[0].decode(
+                    "utf-8"
+                )
+            )
         elif value_type == "i":
-            value = struct.unpack(">i", file.read(4))[0]
+            value = int(struct.unpack(">i", file.read(4))[0])
         elif value_type == "d":
-            value = struct.unpack(">d", file.read(8))[0]
+            value = float(struct.unpack(">d", file.read(8))[0])
+        else:
+            raise (TypeError("Unsupported type for value"))
 
-        return key, value, is_tombstoned
+        return str(key), value, bool(is_tombstoned)
+
+    def _merge_and_compact(self):
+        """
+        Merges all data segments into a single segment and deletes the old segments.
+        Duplicate keys are resolved by taking the value from the segment with the highest priority.
+        Tombstoned keys are not added from the merged segment.
+        """
+        self.last_merged_sstable_id += 1
+        merged_data_segment_name = (
+            f"storage/merged_segment_{self.last_merged_sstable_id}"
+        )
+        merged_values = sortedcontainers.SortedDict()
+
+        for segment in self.data_segments:
+            with open(segment[0], "rb") as f:
+                while not self._is_EOF(f):
+                    key, value, is_tombstoned = self._read_item_from_disk(f)
+                    if not is_tombstoned:
+                        merged_values.update({key: value})
+                    elif key in merged_values:
+                        merged_values.pop(key)
+            os.remove(segment[0])
+
+        offsets = self._write_dict_to_data_segment(
+            merged_data_segment_name, merged_values
+        )
+        self.data_segments = [(merged_data_segment_name, offsets)]
