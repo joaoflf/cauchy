@@ -6,8 +6,11 @@
 &nbsp;
 
 <div align="center">
+<img alt="python badge" src="https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10-blue">
+<img alt="build badge" src="https://github.com/joaoflf/cauchy/actions/workflows/build.yml/badge.svg">
+</br></br
 
-Cauchy is a scalable, lightweight, and robust distributed key-value store (DKVS) built in Python, inspired by the concepts presented in [Designing Data-Intensive Applications](https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/) by Martin Kleppmann. 
+Cauchy is a distributed key-value store (DKVS) built in Python, inspired by the concepts presented in [Designing Data-Intensive Applications](https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/) by Martin Kleppmann. 
 
 [📋 Overview](#-overview) •
 [🎯 Features](#-features) •
@@ -77,8 +80,8 @@ pip install .
 
 ## 🏈 Gameplan
 
-* Implement basic HTTP server and CRUD operations scaffolding (single node) 🔄
-* Implement LSMTree storage engine 📥
+* Implement LSMTree storage engine 🔄
+* Implement basic HTTP server and CRUD operations scaffolding (single node) 📥
 * ...
   
 &nbsp;
