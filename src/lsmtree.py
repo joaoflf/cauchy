@@ -1,6 +1,8 @@
 import bisect
 import os
 import struct
+import threading
+import time
 from typing import BinaryIO, Optional, Tuple, Union
 
 import sortedcontainers
@@ -18,27 +20,42 @@ class LSMTree:
         sstable_block_size (int): The size of each block in the SSTable in kilobytes.
     """
 
-    def __init__(self, memtable_max_size: int = 64, sstable_block_size: int = 4):
+    def __init__(
+        self,
+        memtable_max_size: int = 64,
+        sstable_block_size: int = 4,
+        merge_interval: float = 3600,
+    ):
         self._memtable: dict[str, U] = sortedcontainers.SortedDict()
+        self._memtable_being_flushed: dict[str, U] = sortedcontainers.SortedDict()
         self._memtable_max_size = memtable_max_size * 1024 * 1024
         self._sstable_block_size = sstable_block_size * 1024
-        self.data_segments = []
-        self.last_sstable_id = 0
-        self.last_merged_sstable_id = 0
+        self._merge_interval = merge_interval
+        self._data_segments = []
+        self._last_sstable_id = 0
+        self._last_merged_sstable_id = 0
         if not os.path.exists("storage"):
             os.mkdir("storage")
 
+        # call _merge_and_compact() every hour in a separate thread
+        self._merge_scheduler: Optional[threading.Timer] = threading.Timer(
+            self._merge_interval, self._merge_and_compact
+        )
+        self._merge_scheduler.start()
+
     def get(self, key: str) -> Optional[U]:
-        memtable_result = self._memtable.get(key)
+        memtable_result = self._memtable.get(key) or self._memtable_being_flushed.get(
+            key
+        )
         if memtable_result is not None:
             return memtable_result
         else:
-            for segment in reversed(self.data_segments):
+            for segment in reversed(self._data_segments):
                 segment_result = self._find_item_in_segment(key, segment)
                 if segment_result is not None:
                     return segment_result
 
-    def put(self, key: str, value: str):
+    def put(self, key: str, value: U):
         self._memtable.update({key: value})
         if self._is_memtable_over_threshold():
             self._flush_memtable()
@@ -55,15 +72,17 @@ class LSMTree:
         """
 
         # provide new memtable to receive new writes
-        memtable_to_flush = self._memtable
+        self.memtable_being_flushed = self._memtable
         self._memtable = sortedcontainers.SortedDict()
 
-        self.last_sstable_id += 1
-        data_segment_name = f"storage/segment_{self.last_sstable_id}"
+        self._last_sstable_id += 1
+        data_segment_name = f"storage/segment_{self._last_sstable_id}"
 
-        offsets = self._write_dict_to_data_segment(data_segment_name, memtable_to_flush)
-        self.data_segments.append((data_segment_name, offsets))
-        memtable_to_flush.clear()
+        offsets = self._write_dict_to_data_segment(
+            data_segment_name, self.memtable_being_flushed
+        )
+        self._data_segments.append((data_segment_name, offsets))
+        self.memtable_being_flushed.clear()
 
     def _write_dict_to_data_segment(
         self, data_segment_name: str, dict_to_write: dict
@@ -244,25 +263,30 @@ class LSMTree:
         """
         Merges all data segments into a single segment and deletes the old segments.
         Duplicate keys are resolved by taking the value from the segment with the highest priority.
-        Tombstoned keys are not added from the merged segment.
+        Tombstoned keys are not added to the merged segment.
         """
-        self.last_merged_sstable_id += 1
-        merged_data_segment_name = (
-            f"storage/merged_segment_{self.last_merged_sstable_id}"
-        )
-        merged_values = sortedcontainers.SortedDict()
+        if len(self._data_segments) > 1:
+            self._last_merged_sstable_id += 1
+            merged_data_segment_name = (
+                f"storage/merged_segment_{self._last_merged_sstable_id}"
+            )
+            merged_values = sortedcontainers.SortedDict()
 
-        for segment in self.data_segments:
-            with open(segment[0], "rb") as f:
-                while not self._is_EOF(f):
-                    key, value, is_tombstoned = self._read_item_from_disk(f)
-                    if not is_tombstoned:
-                        merged_values.update({key: value})
-                    elif key in merged_values:
-                        merged_values.pop(key)
-            os.remove(segment[0])
+            for segment in self._data_segments:
+                with open(segment[0], "rb") as f:
+                    while not self._is_EOF(f):
+                        key, value, is_tombstoned = self._read_item_from_disk(f)
+                        if not is_tombstoned:
+                            merged_values.update({key: value})
+                        elif key in merged_values:
+                            merged_values.pop(key)
+                os.remove(segment[0])
 
-        offsets = self._write_dict_to_data_segment(
-            merged_data_segment_name, merged_values
-        )
-        self.data_segments = [(merged_data_segment_name, offsets)]
+            offsets = self._write_dict_to_data_segment(
+                merged_data_segment_name, merged_values
+            )
+            self._data_segments = [(merged_data_segment_name, offsets)]
+
+    def _stop_merge_scheduler(self):
+        self._merge_scheduler.cancel()
+        self._merge_scheduler = None

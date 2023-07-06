@@ -1,5 +1,7 @@
 import os
 import shutil
+import threading
+from unittest import mock
 
 import pytest
 
@@ -13,6 +15,8 @@ def tree():
         shutil.rmtree("storage")
     tree = LSMTree()
     yield tree
+    # Teardown
+    tree._stop_merge_scheduler()
 
 
 def test_put_and_get(tree):
@@ -47,10 +51,10 @@ def test_find_block_range_for_key(tree):
 def test_find_key_in_segment(tree):
     tree._memtable = {"a": "1", "b": 2, "c": 3.2}
     tree._flush_memtable()
-    assert tree._find_item_in_segment("a", tree.data_segments[0]) == "1"
-    assert tree._find_item_in_segment("b", tree.data_segments[0]) == 2
-    assert tree._find_item_in_segment("c", tree.data_segments[0]) == 3.2
-    assert tree._find_item_in_segment("z", tree.data_segments[0]) is None
+    assert tree._find_item_in_segment("a", tree._data_segments[0]) == "1"
+    assert tree._find_item_in_segment("b", tree._data_segments[0]) == 2
+    assert tree._find_item_in_segment("c", tree._data_segments[0]) == 3.2
+    assert tree._find_item_in_segment("z", tree._data_segments[0]) is None
 
 
 def test_merge_and_compact(tree):
@@ -59,11 +63,24 @@ def test_merge_and_compact(tree):
         a = i if i % 2 == 0 else i - 1
         tree.put(str(a), "value")
         tree._flush_memtable()
-        total_segment_size += os.path.getsize(tree.data_segments[-1][0])
+        total_segment_size += os.path.getsize(tree._data_segments[-1][0])
     tree._merge_and_compact()
-    assert len(tree.data_segments) == 1
-    assert os.path.getsize(tree.data_segments[0][0]) == total_segment_size / 2
+    assert len(tree._data_segments) == 1
+    assert os.path.getsize(tree._data_segments[0][0]) == total_segment_size / 2
     assert tree.get("0") == "value"
+
+
+def test_merge_is_called():
+    mock_merge = mock.Mock()
+    with mock.patch.object(LSMTree, "_merge_and_compact", new=mock_merge):
+        tree = LSMTree(merge_interval=0.01)
+        tree.put("a", "1")
+        tree._flush_memtable()
+        tree.put("b", 2)
+        tree._flush_memtable()
+        threading.Event().wait(0.02)
+        assert mock_merge.call_count > 0
+        tree._stop_merge_scheduler()
 
 
 def test_update_order(tree):
