@@ -320,13 +320,3 @@ class LSMTree:
     def _stop_merge_scheduler(self):
         self._merge_scheduler.cancel()
         self._merge_scheduler = None
-
-
-if __name__ == "__main__":
-    tree = LSMTree()
-    tree.put("a", "a")
-    tree.delete("a")
-    tree.put("b", "b")
-    tree._flush_memtable()
-    tree.delete("b")
-    tree.put("c", "c")
