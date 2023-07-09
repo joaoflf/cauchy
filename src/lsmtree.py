@@ -44,13 +44,12 @@ class LSMTree:
         self._merge_scheduler.start()
 
     def get(self, key: str) -> Optional[U]:
-        if self._memtable.get(key) == "tombstone":
-            return None
-
         memtable_result = self._memtable.get(key) or self._memtable_being_flushed.get(
             key
         )
-        if memtable_result is not None:
+        if memtable_result == "tombstone":
+            return None
+        elif memtable_result is not None:
             return memtable_result
         else:
             for segment in reversed(self._data_segments):
@@ -64,21 +63,7 @@ class LSMTree:
             self._flush_memtable()
 
     def delete(self, key):
-        if key in self._memtable:
-            self._memtable.update({key: "tombstone"})
-        else:
-            segment_name = None
-            item_offset = 0
-            for segment in reversed(self._data_segments):
-                segment_result = self._find_item_in_segment(key, segment)
-                if segment_result is not None:
-                    segment_name = segment[0]
-                    item_offset = segment_result[1]
-                    break
-            if segment_name:
-                self._mark_item_as_tombstoned(segment_name, item_offset)
-            else:
-                raise KeyError(f"Key {key} not found")
+        self._memtable.update({key: "tombstone"})
 
     def _is_memtable_over_threshold(self):
         return asizeof.asizeof(self._memtable) > self._memtable_max_size
@@ -112,60 +97,59 @@ class LSMTree:
         offsets = {}
         with open(data_segment_name, "wb") as f:
             for key, value in dict_to_write.items():
-                if value != "tombstone":
-                    if is_first_block:
-                        # if is_first_block, then we need to add the offset of the first block
-                        offsets[key] = 0
-                        is_first_block = False
+                if is_first_block:
+                    # if is_first_block, then we need to add the offset of the first block
+                    offsets[key] = 0
+                    is_first_block = False
 
-                    format_string = self._generate_struct_format_string(str(key), value)
+                format_string = self._generate_struct_format_string(str(key), value)
 
-                    if (
-                        current_block_size + struct.calcsize(format_string)
-                        > self._sstable_block_size
-                    ):
-                        # if the current block size + the size of the new key value pair is greater than the block size,
-                        # then we need to start a new block
-                        f.flush()
-                        offsets[key] = f.tell()
-                        current_block_size = struct.calcsize(format_string)
-                    else:
-                        current_block_size += struct.calcsize(format_string)
+                if (
+                    current_block_size + struct.calcsize(format_string)
+                    > self._sstable_block_size
+                ):
+                    # if the current block size + the size of the new key value pair is greater than the block size,
+                    # then we need to start a new block
+                    f.flush()
+                    offsets[key] = f.tell()
+                    current_block_size = struct.calcsize(format_string)
+                else:
+                    current_block_size += struct.calcsize(format_string)
 
-                    encoded_key = str(key).encode("utf-8")
-                    key_length = len(encoded_key)
-                    type_char = (
-                        "i"
-                        if isinstance(value, int)
-                        else "d"
-                        if isinstance(value, float)
-                        else "s"
+                encoded_key = str(key).encode("utf-8")
+                key_length = len(encoded_key)
+                type_char = (
+                    "i"
+                    if isinstance(value, int)
+                    else "d"
+                    if isinstance(value, float)
+                    else "s"
+                )
+                if isinstance(value, int) or isinstance(value, float):
+                    f.write(
+                        struct.pack(
+                            format_string,
+                            key_length,
+                            encoded_key,
+                            value == "tombstone",
+                            type_char.encode("utf-8"),
+                            value,
+                        )
                     )
-                    if isinstance(value, int) or isinstance(value, float):
-                        f.write(
-                            struct.pack(
-                                format_string,
-                                key_length,
-                                encoded_key,
-                                False,
-                                type_char.encode("utf-8"),
-                                value,
-                            )
+                else:
+                    encoded_value = str(value).encode("utf-8")
+                    value_length = len(encoded_value)
+                    f.write(
+                        struct.pack(
+                            format_string,
+                            key_length,
+                            encoded_key,
+                            value == "tombstone",
+                            type_char.encode("utf-8"),
+                            value_length,
+                            encoded_value,
                         )
-                    else:
-                        encoded_value = str(value).encode("utf-8")
-                        value_length = len(encoded_value)
-                        f.write(
-                            struct.pack(
-                                format_string,
-                                key_length,
-                                encoded_key,
-                                False,
-                                type_char.encode("utf-8"),
-                                value_length,
-                                encoded_value,
-                            )
-                        )
+                    )
         return offsets
 
     def _generate_struct_format_string(self, key: str, value: U) -> str:
