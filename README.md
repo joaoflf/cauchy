@@ -32,57 +32,108 @@ Cauchy aims to be an educational implementation of a distributed key-value store
 
 * **Distributed:** Scales across multiple nodes.
 * **LSMTree Storage Engine:** Leverages an LSMTree as storage engine for efficient data management.
+* **Command Line Interface:** Interact with the store using a user-friendly command line interface for both the server and client.
+* **Multiple Databases:** Supports the creation, deletion, selection, and listing of multiple databases.
+* **Data Replication:** Ensures data availability and fault tolerance by replicating data across different nodes.
+* **Replica Management:** Configurable roles for nodes including leader and follower for data replication.
 * **Consistent Hashing:** Utilizes consistent hashing for data distribution.
-* **Fault Tolerance:** Built-in resilience against node failures.
 * **REST API Interface:** Provides a REST API for interacting with the store.
 
 &nbsp;
 
 ## ⚙️ Installation
 
-This project is setup as a python package.
-```bash
-# install from source
-git clone git@github.com:joaoflf/cauchy.git
-cd cauchy 
-pip install .
+You should have Python 3.8+ installed on your system.
+
 ```
+python --version
+```
+
+Install Cauchy globally using pip:
+
+ ```
+pip install cauchy
+ ```
+
+&nbsp;
 
 ## ⌨️ Usage
 
-1. Start the Cauchy server:
+### Server
+
+Start the Cauchy server:
+
+* As a leader:
 
     ```
-    python cauchy/server.py
+    cauchy server --port 5000 --role leader
     ```
 
-2. You can interact with the server using the REST API:
+* As a follower:
 
-    * Set a key-value pair:
+    ```
+    cauchy server --port 6000 --role follower --leader-host localhost --leader-port 5000
+    ```
 
-        ```
-        curl -X POST http://localhost:5000/set -d '{"key":"foo", "value":"bar"}'
-        ```
+### Client
 
-    * Retrieve the value of a key:
+Use the client CLI to interact with the server:
 
-        ```
-        curl -X GET http://localhost:5000/get/foo
-        ```
+* Connect to the server and select a database:
 
-    * Delete a key:
+    ```
+    cauchy connect --host localhost --port 5000 --username user --password pass --database mydb
+    ```
 
-        ```
-        curl -X DELETE http://localhost:5000/delete/foo
-        ```
+* List available databases:
+
+    ```
+    cauchy list-databases
+    ```
+
+* Create a new database:
+
+    ```
+    cauchy create-database newdb
+    ```
+
+* Select a database:
+
+    ```
+    cauchy select-database newdb
+    ```
+
+* Delete a database:
+
+    ```
+    cauchy delete-database newdb
+    ```
+
+* Set a key-value pair:
+
+    ```
+    cauchy set foo bar
+    ```
+
+* Retrieve the value of a key:
+
+    ```
+    cauchy get foo
+    ```
+
+* Delete a key:
+
+    ```
+    cauchy delete foo
+    ```
 
 &nbsp;
 
 ## 🏈 Gameplan
 
-* Implement LSMTree storage engine 🔄
-* Implement basic HTTP server and CRUD operations scaffolding (single node) 📥
-* ...
+* Implement LSMTree storage engine ✅
+* Implement server scaffolding and interface 📥
+* Build CLI 📥
   
 &nbsp;
 
