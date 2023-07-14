@@ -1,9 +1,9 @@
+from __future__ import annotations
 import bisect
 import os
 import struct
 import threading
-import time
-from typing import BinaryIO, Optional, Tuple, Union
+from typing import BinaryIO, Union
 
 import sortedcontainers
 from pympler import asizeof
@@ -22,6 +22,7 @@ class LSMTree:
 
     def __init__(
         self,
+        storage_location: str,
         memtable_max_size: int = 64,
         sstable_block_size: int = 4,
         merge_interval: float = 3600,
@@ -34,16 +35,16 @@ class LSMTree:
         self._data_segments = []
         self._last_sstable_id = 0
         self._last_merged_sstable_id = 0
-        if not os.path.exists("storage"):
-            os.mkdir("storage")
+        if not os.path.exists(storage_location):
+            os.mkdir(storage_location)
 
         # call _merge_and_compact() every hour in a separate thread
-        self._merge_scheduler: Optional[threading.Timer] = threading.Timer(
+        self._merge_scheduler: threading.Timer | None = threading.Timer(
             self._merge_interval, self._merge_and_compact
         )
         self._merge_scheduler.start()
 
-    def get(self, key: str) -> Optional[U]:
+    def get(self, key: str) -> U | None:
         memtable_result = self._memtable.get(key) or self._memtable_being_flushed.get(
             key
         )
@@ -171,7 +172,7 @@ class LSMTree:
 
     def _find_block_range_for_key(
         self, key: str, block_offsets: dict
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """
         Returns the offsets of the SSTable blocks that bound the key in the segment.
         """
@@ -192,8 +193,8 @@ class LSMTree:
         return lower_bound, upper_bound
 
     def _find_item_in_segment(
-        self, key: str, segment: Tuple[str, dict]
-    ) -> Optional[Tuple[U, int]]:
+        self, key: str, segment: tuple[str, dict]
+    ) -> tuple[U, int] | None:
         """
         Finds an item in the given segment. If the key is not found, returns None.
         If the key is in the sparse index and not tombstoned, then the value is read directly from the block.
@@ -239,7 +240,7 @@ class LSMTree:
             file.seek(-1, 1)
         return next_byte == b""
 
-    def _read_item_from_disk(self, file: BinaryIO) -> Tuple[str, U, bool]:
+    def _read_item_from_disk(self, file: BinaryIO) -> tuple[str, U, bool]:
         """
         Reads a key, value, and tombstone bit from the file.
         File pointer must be at the start of the key.
