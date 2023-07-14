@@ -3,47 +3,27 @@ import socket
 if __name__ == "__main__":
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(("127.0.0.1", 65432))
+        server_host = "127.0.0.1"
+        server_port = 65432
+        client_socket.connect((server_host, server_port))
+        print("Connected to server ", server_host, ":", server_port)
 
-        message = "put a 1"
-        client_socket.send(message.encode())
+        while True:
+            # Get the user's input
+            message = input("> ")
 
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
+            # If the user types 'exit', break out of the loop
+            if message.lower() == "exit":
+                break
 
-        message = "get a"
-        client_socket.send(message.encode())
+            # Send the message to the server
+            client_socket.sendall(message.encode())
 
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
+            # Get the server's response
+            print(client_socket.recv(1024).decode())
 
-        message = "put a 2"
-        client_socket.send(message.encode())
-
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
-
-        message = "get a"
-        client_socket.send(message.encode())
-
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
-
-        message = "delete a"
-        client_socket.send(message.encode())
-
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
-
-        message = "get a"
-        client_socket.send(message.encode())
-
-        print("Sent: " + message)
-        print("Received: " + client_socket.recv(1024).decode())
-
-        # Send a message to tell server to end the connection
-        end_message = "exit"
-        client_socket.send(end_message.encode())
+        client_socket.sendall("exit".encode())
+        client_socket.close()
 
     except Exception as e:
         print("There was an error:", e)
