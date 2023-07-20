@@ -63,78 +63,39 @@ pip install cauchy
 
 Start the Cauchy server:
 
-* As a leader:
-
-    ```
-    cauchy server --port 5000 --role leader
-    ```
-
-* As a follower:
-
-    ```
-    cauchy server --port 6000 --role follower --leader-host localhost --leader-port 5000
-    ```
+```shell
+cauchy server --host localhost --port 65432
+```
 
 ### Client
 
 Use the client CLI to interact with the server:
 
-* Connect to the server and select a database:
+* Connect to the server, which opens a REPL:
 
-    ```
-    cauchy connect --host localhost --port 5000 --username user --password pass --database mydb
-    ```
-
-* List available databases:
-
-    ```
-    cauchy list-databases
+    ```shell
+    cauchy connect --host localhost --port 65432
     ```
 
-* Create a new database:
+* Once the REPL is open, you can perform the following operations:
 
-    ```
-    cauchy create-database newdb
-    ```
+    * Write or update a key-value pair:
 
-* Select a database:
+        ```shell
+        > put key value
+        ```
+    * Retrieve the value of a key:
 
-    ```
-    cauchy select-database newdb
-    ```
+        ```shell
+        > get key
+        ```
+    
+    * Delete a key:
 
-* Delete a database:
+        ```shell
+        > delete key
+        ```
 
-    ```
-    cauchy delete-database newdb
-    ```
-
-* Set a key-value pair:
-
-    ```
-    cauchy set foo bar
-    ```
-
-* Retrieve the value of a key:
-
-    ```
-    cauchy get foo
-    ```
-
-* Delete a key:
-
-    ```
-    cauchy delete foo
-    ```
-
-&nbsp;
-
-## 🏈 Gameplan
-
-* Implement LSMTree storage engine ✅
-* Implement server scaffolding and interface 📥
-* Build CLI 📥
-  
 &nbsp;
 
 ## 📑 License

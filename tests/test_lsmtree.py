@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from lsmtree import LSMTree
+from cauchy.lsmtree import LSMTree
 
 
 @pytest.fixture

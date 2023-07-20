@@ -60,7 +60,7 @@ class Node:
             key = message.split(" ")[1]
             value = self.storage.get(key)
             if value is None:
-                value = f"key{key} not found"
+                value = f"key '{key}' not found"
             if isinstance(value, str):
                 client_socket.sendall(str(value).encode("utf-8"))
 
@@ -72,9 +72,6 @@ class Node:
         elif message.startswith("delete"):
             key = message.split(" ")[1]
             self.storage.delete(key)
-            client_socket.sendall("OK".encode("utf-8"))
-
-        elif message.startswith("exit"):
             client_socket.sendall("OK".encode("utf-8"))
 
         else:
@@ -114,8 +111,3 @@ class ConnectionThread(threading.Thread):
             self.node.handle_message(self.socket, decoded_message)
 
         self.socket.close()
-
-
-if __name__ == "__main__":
-    node = Node()
-    node.start_server()

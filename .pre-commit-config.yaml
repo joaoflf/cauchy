@@ -8,7 +8,7 @@ repos:
       pass_filenames: false
     - id: mypy
       name: mypy
-      entry: mypy src/ --check-untyped-defs --explicit-package-bases --warn-unreachable --ignore-missing-imports
+      entry: mypy cauchy/ --check-untyped-defs --explicit-package-bases --warn-unreachable --ignore-missing-imports
       language: system
       pass_filenames: false
     - id: unit-tests
