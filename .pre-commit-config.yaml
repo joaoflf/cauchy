@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+    - id: black
+      name: black
+      entry: black .
+      language: system
+      pass_filenames: false
+    - id: mypy
+      name: mypy
+      entry: mypy src/ --check-untyped-defs --explicit-package-bases --warn-unreachable --ignore-missing-imports
+      language: system
+      pass_filenames: false
+    - id: unit-tests
+      name: unit tests
+      entry: pytest
+      language: system
+      pass_filenames: false

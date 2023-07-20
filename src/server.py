@@ -2,7 +2,7 @@ import socket
 import sys
 import threading
 
-from lsmtree import LSMTree
+from .lsmtree import LSMTree
 
 
 class Node:
@@ -61,7 +61,8 @@ class Node:
             value = self.storage.get(key)
             if value is None:
                 value = f"key{key} not found"
-            client_socket.sendall(value.encode("utf-8"))
+            if isinstance(value, str):
+                client_socket.sendall(str(value).encode("utf-8"))
 
         elif message.startswith("put"):
             key, value = message.split(" ")[1:]
@@ -105,12 +106,12 @@ class ConnectionThread(threading.Thread):
                 print("Connection timed out")
                 break
 
-            message = message.decode("utf-8")
+            decoded_message = message.decode("utf-8")
             if message == "exit":
                 print("Closing connection")
                 break
 
-            self.node.handle_message(self.socket, message)
+            self.node.handle_message(self.socket, decoded_message)
 
         self.socket.close()
 

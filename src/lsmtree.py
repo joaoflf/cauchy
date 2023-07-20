@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import bisect
 import os
 import struct
 import threading
 from typing import BinaryIO, Union
 
-import sortedcontainers
 from pympler import asizeof
+from sortedcontainers import SortedDict
 
 U = Union[int, float, str]
 
@@ -27,19 +28,19 @@ class LSMTree:
         sstable_block_size: int = 4,
         merge_interval: float = 3600,
     ):
-        self._memtable: dict[str, U] = sortedcontainers.SortedDict()
-        self._memtable_being_flushed: dict[str, U] = sortedcontainers.SortedDict()
+        self._memtable: dict[str, U] = SortedDict()
+        self._memtable_being_flushed: dict[str, U] = SortedDict()
         self._memtable_max_size = memtable_max_size * 1024 * 1024
         self._sstable_block_size = sstable_block_size * 1024
         self._merge_interval = merge_interval
-        self._data_segments = []
+        self._data_segments: list[tuple[str, dict]] = []
         self._last_sstable_id = 0
         self._last_merged_sstable_id = 0
         if not os.path.exists(storage_location):
             os.mkdir(storage_location)
 
         # call _merge_and_compact() every hour in a separate thread
-        self._merge_scheduler: threading.Timer | None = threading.Timer(
+        self._merge_scheduler: threading.Timer = threading.Timer(
             self._merge_interval, self._merge_and_compact
         )
         self._merge_scheduler.start()
@@ -57,6 +58,7 @@ class LSMTree:
                 segment_result = self._find_item_in_segment(key, segment)
                 if segment_result is not None:
                     return segment_result[0]
+        return None
 
     def put(self, key: str, value: U):
         self._memtable.update({key: value})
@@ -76,7 +78,7 @@ class LSMTree:
 
         # provide new memtable to receive new writes
         self.memtable_being_flushed = self._memtable
-        self._memtable = sortedcontainers.SortedDict()
+        self._memtable = SortedDict()
 
         self._last_sstable_id += 1
         data_segment_name = f"storage/segment_{self._last_sstable_id}"
@@ -232,6 +234,7 @@ class LSMTree:
                         # if we passed the upper bound, then the key does not exist in the segment
                         return None
                     current_block_offset = f.tell()
+        return None
 
     def _is_EOF(self, file: BinaryIO) -> bool:
         next_byte = file.read(1)
@@ -251,7 +254,7 @@ class LSMTree:
         value_type = struct.unpack(">c", file.read(1))[0].decode("utf-8")
         if value_type == "s":
             value_length = struct.unpack(">i", file.read(4))[0]
-            value = str(
+            value: U = str(
                 struct.unpack(f">{value_length}s", file.read(value_length))[0].decode(
                     "utf-8"
                 )
@@ -285,7 +288,7 @@ class LSMTree:
             merged_data_segment_name = (
                 f"storage/merged_segment_{self._last_merged_sstable_id}"
             )
-            merged_values = sortedcontainers.SortedDict()
+            merged_values = SortedDict()
 
             for segment in self._data_segments:
                 with open(segment[0], "rb") as f:
@@ -304,4 +307,3 @@ class LSMTree:
 
     def _stop_merge_scheduler(self):
         self._merge_scheduler.cancel()
-        self._merge_scheduler = None

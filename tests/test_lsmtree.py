@@ -13,7 +13,7 @@ def tree():
     # Setup
     if os.path.exists("storage"):
         shutil.rmtree("storage")
-    tree = LSMTree()
+    tree = LSMTree(storage_location="storage/")
     yield tree
     # Teardown
     tree._stop_merge_scheduler()
@@ -86,7 +86,7 @@ def test_merge_and_compact(tree):
 def test_merge_is_called():
     mock_merge = mock.Mock()
     with mock.patch.object(LSMTree, "_merge_and_compact", new=mock_merge):
-        tree = LSMTree(merge_interval=0.01)
+        tree = LSMTree(storage_location="storage/", merge_interval=0.01)
         tree.put("a", "1")
         tree._flush_memtable()
         tree.put("b", 2)
