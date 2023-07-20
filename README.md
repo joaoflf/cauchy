@@ -37,7 +37,6 @@ Cauchy aims to be an educational implementation of a distributed key-value store
 * **Data Replication:** Ensures data availability and fault tolerance by replicating data across different nodes.
 * **Replica Management:** Configurable roles for nodes including leader and follower for data replication.
 * **Consistent Hashing:** Utilizes consistent hashing for data distribution.
-* **REST API Interface:** Provides a REST API for interacting with the store.
 
 &nbsp;
 
