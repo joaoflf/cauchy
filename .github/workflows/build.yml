@@ -31,7 +31,7 @@ jobs:
         pip install ."[test,lint]"
     - name: Check typing with mypy
       run: |
-        mypy src/ --check-untyped-defs --explicit-package-bases --warn-unreachable --ignore-missing-imports
+        mypy cauchy/ --check-untyped-defs --explicit-package-bases --warn-unreachable --ignore-missing-imports
     - name: Lint with black
       run: |
         black .
